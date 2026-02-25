@@ -515,7 +515,7 @@ Visualization Manager:
   Global Options:
     Background Color: 0; 0; 0
     Default Light: true
-    Fixed Frame: world
+    Fixed Frame: map
     Frame Rate: 30
   Name: root
   Tools:
@@ -555,7 +555,7 @@ Visualization Manager:
       Name: Current View
       Near Clip Distance: 0.009999999776482582
       Pitch: 1.5597963333129883
-      Target Frame: aft_mapped
+      Target Frame: map
       Value: Orbit (rviz)
       Yaw: 4.144446849822998
     Saved: ~

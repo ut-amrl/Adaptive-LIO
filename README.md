@@ -155,6 +155,7 @@ Inside the container:
 ```bash
 ros2 launch adaptive_lio run.launch.py rviz:=true
 ```
+The default RViz config uses `map` as Fixed Frame.
 
 You can override the config path:
 ```bash
