@@ -5,8 +5,10 @@
  */
 #pragma once
 
-#include <livox_ros_driver/CustomMsg.h>
+#include <livox_ros_driver2/msg/custom_msg.hpp>
 #include <pcl_conversions/pcl_conversions.h>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include "cloud_convert_interface.hpp"
 
@@ -54,7 +56,7 @@ namespace zjloc
          * @param pcl_out
          */
         void
-        Process(const livox_ros_driver::CustomMsg::ConstPtr &msg,
+        Process(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg,
                 std::vector<std::vector<point3D>> &pcl_out,
                 std::vector<double> &v_t);
 
@@ -63,7 +65,7 @@ namespace zjloc
          * @param msg
          * @param pcl_out
          */
-        void Process(const sensor_msgs::PointCloud2::ConstPtr &msg,
+        void Process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg,
                      std::vector<std::vector<point3D>> &pcl_out,
                      std::vector<double> &v_t);
 
@@ -78,11 +80,11 @@ namespace zjloc
     private:
         void reset();
         void adaCut();
-        void AviaHandler(const livox_ros_driver::CustomMsg::ConstPtr &msg);
-        void Oust64Handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
-        void VelodyneHandler(const sensor_msgs::PointCloud2::ConstPtr &msg);
-        void RobosenseHandler(const sensor_msgs::PointCloud2::ConstPtr &msg);
-        void PandarHandler(const sensor_msgs::PointCloud2::ConstPtr &msg);
+        void AviaHandler(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg);
+        void Oust64Handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
+        void VelodyneHandler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
+        void RobosenseHandler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
+        void PandarHandler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
 
         std::vector<double> v_timestamp;
         std::vector<point3D> cloud_out_;           //  输出点云

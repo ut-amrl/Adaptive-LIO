@@ -1,5 +1,9 @@
 #include "cloud_convert2.h"
 
+#include <algorithm>
+#include <cmath>
+#include <iostream>
+
 #include <glog/logging.h>
 #include <yaml-cpp/yaml.h>
 // #include <execution>
@@ -7,7 +11,7 @@
 namespace zjloc
 {
 
-    void CloudConvert2::Process(const livox_ros_driver::CustomMsg::ConstPtr &msg,
+    void CloudConvert2::Process(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg,
                                 std::vector<std::vector<point3D>> &pcl_out,
                                 std::vector<double> &v_t)
     {
@@ -18,7 +22,7 @@ namespace zjloc
         v_t = v_timestamp;
     }
 
-    void CloudConvert2::Process(const sensor_msgs::PointCloud2::ConstPtr &msg,
+    void CloudConvert2::Process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg,
                                 std::vector<std::vector<point3D>> &pcl_out,
                                 std::vector<double> &v_t)
     {
@@ -50,20 +54,30 @@ namespace zjloc
         v_t = v_timestamp;
     }
 
-    void CloudConvert2::AviaHandler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
+    void CloudConvert2::AviaHandler(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg)
     {
+        if (msg->points.empty())
+        {
+            return;
+        }
+
+        if (sweep_cut_num < 1)
+        {
+            sweep_cut_num = 1;
+        }
+
         int plsize = msg->point_num;
 
         static double tm_scale = 1e9;
 
-        double headertime = msg->header.stamp.toSec();
+        double headertime = rclcpp::Time(msg->header.stamp).seconds();
         timespan_ = msg->points.back().offset_time / tm_scale;
 
-        delta_time = timespan_ / sweep_cut_num;
+        delta_time = std::max(timespan_ / sweep_cut_num, 1e-6);
 
         v_timestamp.resize(sweep_cut_num);
         for (int i = 0; i < sweep_cut_num; i++)
-            v_timestamp[i] = /*msg->header.stamp.toSec() +*/ (i + 1) * delta_time; //  delta time
+            v_timestamp[i] = /*rclcpp::Time(msg->header.stamp).seconds() +*/ (i + 1) * delta_time; //  delta time
 
         // std::cout << "span:" << timespan_ << ",0: " << msg->points[0].offset_time / tm_scale
         //           << " , 100: " << msg->points[100].offset_time / tm_scale << std::endl;
@@ -96,12 +110,8 @@ namespace zjloc
 
                 point_temp.timestamp = headertime + point_temp.relative_time;
 
-                int id = (msg->points[i].offset_time / tm_scale) / delta_time; //  get id
-                if (id < 0 || id >= sweep_cut_num)
-                {
-                    // std::cout << "ERROR, id = " << id << std::endl;
-                    id = id - 1;
-                }
+                int id = static_cast<int>((msg->points[i].offset_time / tm_scale) / delta_time); // get id
+                id = std::clamp(id, 0, sweep_cut_num - 1);
 
                 point_temp.alpha_time = point_temp.relative_time / delta_time - id;
                 point_temp.timespan = delta_time;
@@ -113,21 +123,36 @@ namespace zjloc
         }
     }
 
-    void CloudConvert2::Oust64Handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+    void CloudConvert2::Oust64Handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg)
     {
         pcl::PointCloud<ouster_ros::Point> pl_orig;
         pcl::fromROSMsg(*msg, pl_orig);
+        if (pl_orig.empty())
+        {
+            return;
+        }
+
+        if (sweep_cut_num < 1)
+        {
+            sweep_cut_num = 1;
+        }
+
         int plsize = pl_orig.size();
 
         static double tm_scale = 1e9;
 
-        double headertime = msg->header.stamp.toSec();
-        timespan_ = pl_orig.points.back().t / tm_scale;
-        delta_time = timespan_ / sweep_cut_num;
+        double headertime = rclcpp::Time(msg->header.stamp).seconds();
+        double max_relative_time = 0.0;
+        for (const auto &pt : pl_orig.points)
+        {
+            max_relative_time = std::max(max_relative_time, static_cast<double>(pt.t) / tm_scale);
+        }
+        timespan_ = std::max(max_relative_time, 1e-6);
+        delta_time = std::max(timespan_ / sweep_cut_num, 1e-6);
 
         v_timestamp.resize(sweep_cut_num);
         for (int i = 0; i < sweep_cut_num; i++)
-            v_timestamp[i] = /*msg->header.stamp.toSec() +*/ (i + 1) * delta_time; //  delta time
+            v_timestamp[i] = /*rclcpp::Time(msg->header.stamp).seconds() +*/ (i + 1) * delta_time; //  delta time
 
         // std::cout << "span:" << timespan_ << ",0: " << pl_orig.points[0].t / tm_scale
         //           << " , 100: " << pl_orig.points[100].t / tm_scale
@@ -156,12 +181,8 @@ namespace zjloc
 
             point_temp.timestamp = headertime + point_temp.relative_time;
 
-            int id = (pl_orig.points[i].t / tm_scale) / delta_time; //  get id
-            if (id < 0 || id >= sweep_cut_num)
-            {
-                // std::cout << "ERROR, id = " << id << std::endl;
-                id = id - 1;
-            }
+            int id = static_cast<int>((pl_orig.points[i].t / tm_scale) / delta_time); // get id
+            id = std::clamp(id, 0, sweep_cut_num - 1);
 
             point_temp.alpha_time = point_temp.relative_time / delta_time - id;
             point_temp.timespan = delta_time;
@@ -172,37 +193,52 @@ namespace zjloc
         }
     }
 
-    void CloudConvert2::RobosenseHandler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+    void CloudConvert2::RobosenseHandler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg)
     {
         pcl::PointCloud<robosense_ros::Point> pl_orig;
         pcl::fromROSMsg(*msg, pl_orig);
+        if (pl_orig.empty())
+        {
+            return;
+        }
+
+        if (sweep_cut_num < 1)
+        {
+            sweep_cut_num = 1;
+        }
+
         int plsize = pl_orig.size();
 
-        double headertime = msg->header.stamp.toSec();
+        double headertime = rclcpp::Time(msg->header.stamp).seconds();
         //  FIXME:  时间戳大于0.1
         auto time_list_robosense = [&](robosense_ros::Point &point_1, robosense_ros::Point &point_2)
         {
             return (point_1.timestamp < point_2.timestamp);
         };
         sort(pl_orig.points.begin(), pl_orig.points.end(), time_list_robosense);
-        while (pl_orig.points[plsize - 1].timestamp - pl_orig.points[0].timestamp >= 0.1)
+        while (plsize > 1 && pl_orig.points[plsize - 1].timestamp - pl_orig.points[0].timestamp >= 0.1)
         {
             plsize--;
             pl_orig.points.pop_back();
         }
 
+        if (pl_orig.empty())
+        {
+            return;
+        }
+
         timespan_ = pl_orig.points.back().timestamp - pl_orig.points[0].timestamp;
-        delta_time = timespan_ / sweep_cut_num;
+        delta_time = std::max(timespan_ / sweep_cut_num, 1e-6);
 
         v_timestamp.resize(sweep_cut_num);
         for (int i = 0; i < sweep_cut_num; i++)
-            v_timestamp[i] = /*msg->header.stamp.toSec() +*/ (i + 1) * delta_time; //  delta time
+            v_timestamp[i] = /*rclcpp::Time(msg->header.stamp).seconds() +*/ (i + 1) * delta_time; //  delta time
 
         // std::cout << timespan_ << std::endl;
 
         // std::cout << pl_orig.points[1].timestamp - pl_orig.points[0].timestamp << ", "
-        //           << msg->header.stamp.toSec() - pl_orig.points[0].timestamp << ", "
-        //           << msg->header.stamp.toSec() - pl_orig.points.back().timestamp << std::endl;
+        //           << rclcpp::Time(msg->header.stamp).seconds() - pl_orig.points[0].timestamp << ", "
+        //           << rclcpp::Time(msg->header.stamp).seconds() - pl_orig.points.back().timestamp << std::endl;
 
         for (int i = 0; i < pl_orig.points.size(); i++)
         {
@@ -226,12 +262,8 @@ namespace zjloc
 
             point_temp.timestamp = pl_orig.points[i].timestamp;
 
-            int id = point_temp.relative_time / delta_time; //  get id
-            if (id < 0 || id >= sweep_cut_num)
-            {
-                // std::cout << "ERROR, id = " << id << std::endl;
-                id = id - 1;
-            }
+            int id = static_cast<int>(point_temp.relative_time / delta_time); // get id
+            id = std::clamp(id, 0, sweep_cut_num - 1);
 
             point_temp.alpha_time = point_temp.relative_time / delta_time - id;
             point_temp.timespan = delta_time;
@@ -243,13 +275,23 @@ namespace zjloc
         }
     }
 
-    void CloudConvert2::VelodyneHandler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+    void CloudConvert2::VelodyneHandler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg)
     {
         pcl::PointCloud<velodyne_ros::Point> pl_orig;
         pcl::fromROSMsg(*msg, pl_orig);
+        if (pl_orig.empty())
+        {
+            return;
+        }
+
+        if (sweep_cut_num < 1)
+        {
+            sweep_cut_num = 1;
+        }
+
         int plsize = pl_orig.points.size();
 
-        double headertime = msg->header.stamp.toSec();
+        double headertime = rclcpp::Time(msg->header.stamp).seconds();
 
         static double tm_scale = 1; //   1e6 - nclt  or 1
 
@@ -259,17 +301,21 @@ namespace zjloc
             return (point_1.time < point_2.time);
         };
         sort(pl_orig.points.begin(), pl_orig.points.end(), time_list_velodyne);
-        while (pl_orig.points[plsize - 1].time / tm_scale >= 0.1)
+        while (plsize > 1 && pl_orig.points[plsize - 1].time / tm_scale >= 0.1)
         {
             plsize--;
             pl_orig.points.pop_back();
         }
+        if (pl_orig.empty())
+        {
+            return;
+        }
         timespan_ = pl_orig.points.back().time / tm_scale;
-        delta_time = timespan_ / sweep_cut_num;
+        delta_time = std::max(timespan_ / sweep_cut_num, 1e-6);
 
         v_timestamp.resize(sweep_cut_num);
         for (int i = 0; i < sweep_cut_num; i++)
-            v_timestamp[i] = /*msg->header.stamp.toSec() +*/ (i + 1) * delta_time; //  delta time
+            v_timestamp[i] = /*rclcpp::Time(msg->header.stamp).seconds() +*/ (i + 1) * delta_time; //  delta time
 
         // std::cout << "span:" << timespan_ << ",0: " << pl_orig.points[0].time / tm_scale
         //           << " , 300: " << pl_orig.points[300].time / tm_scale
@@ -298,12 +344,8 @@ namespace zjloc
 
             point_temp.timestamp = headertime + point_temp.relative_time;
 
-            int id = point_temp.relative_time / delta_time; //  get id
-            if (id < 0 || id >= sweep_cut_num)
-            {
-                // std::cout << "ERROR, id = " << id << std::endl;
-                id = id - 1;
-            }
+            int id = static_cast<int>(point_temp.relative_time / delta_time); // get id
+            id = std::clamp(id, 0, sweep_cut_num - 1);
 
             point_temp.alpha_time = point_temp.relative_time / delta_time - id;
             point_temp.timespan = delta_time;
@@ -313,13 +355,23 @@ namespace zjloc
         }
     }
 
-    void CloudConvert2::PandarHandler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+    void CloudConvert2::PandarHandler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg)
     {
         pcl::PointCloud<pandar_ros::Point> pl_orig;
         pcl::fromROSMsg(*msg, pl_orig);
+        if (pl_orig.empty())
+        {
+            return;
+        }
+
+        if (sweep_cut_num < 1)
+        {
+            sweep_cut_num = 1;
+        }
+
         int plsize = pl_orig.points.size();
 
-        double headertime = msg->header.stamp.toSec();
+        double headertime = rclcpp::Time(msg->header.stamp).seconds();
 
         static double tm_scale = 1; //   1e6
 
@@ -328,22 +380,26 @@ namespace zjloc
             return (point_1.timestamp < point_2.timestamp);
         };
         sort(pl_orig.points.begin(), pl_orig.points.end(), time_list_pandar);
-        while (pl_orig.points[plsize - 1].timestamp - pl_orig.points[0].timestamp >= 0.1)
+        while (plsize > 1 && pl_orig.points[plsize - 1].timestamp - pl_orig.points[0].timestamp >= 0.1)
         {
             plsize--;
             pl_orig.points.pop_back();
         }
+        if (pl_orig.empty())
+        {
+            return;
+        }
         timespan_ = pl_orig.points.back().timestamp - pl_orig.points[0].timestamp;
-        delta_time = timespan_ / sweep_cut_num;
+        delta_time = std::max(timespan_ / sweep_cut_num, 1e-6);
 
         v_timestamp.resize(sweep_cut_num);
         for (int i = 0; i < sweep_cut_num; i++)
-            v_timestamp[i] = /*msg->header.stamp.toSec() +*/ (i + 1) * delta_time; //  delta time
+            v_timestamp[i] = /*rclcpp::Time(msg->header.stamp).seconds() +*/ (i + 1) * delta_time; //  delta time
 
         // std::cout << "span:" << timespan_ << ",0: " << pl_orig.points[1].timestamp - pl_orig.points[0].timestamp
         //           << " , 100: " << pl_orig.points[100].timestamp - pl_orig.points[0].timestamp
-        //           << msg->header.stamp.toSec() - pl_orig.points[0].timestamp << ", "
-        //           << msg->header.stamp.toSec() - pl_orig.points.back().timestamp << std::endl;
+        //           << rclcpp::Time(msg->header.stamp).seconds() - pl_orig.points[0].timestamp << ", "
+        //           << rclcpp::Time(msg->header.stamp).seconds() - pl_orig.points.back().timestamp << std::endl;
 
         for (int i = 0; i < plsize; i++)
         {
@@ -368,12 +424,8 @@ namespace zjloc
 
             point_temp.timestamp = headertime + point_temp.relative_time;
 
-            int id = point_temp.relative_time / delta_time; //  get id
-            if (id < 0 || id >= sweep_cut_num)
-            {
-                // std::cout << "ERROR, id = " << id << std::endl;
-                id = id - 1;
-            }
+            int id = static_cast<int>(point_temp.relative_time / delta_time); // get id
+            id = std::clamp(id, 0, sweep_cut_num - 1);
 
             point_temp.alpha_time = point_temp.relative_time / delta_time - id;
             point_temp.timespan = delta_time;

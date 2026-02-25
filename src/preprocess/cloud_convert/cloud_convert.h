@@ -5,8 +5,10 @@
  */
 #pragma once
 
-#include <livox_ros_driver/CustomMsg.h>
+#include <livox_ros_driver2/msg/custom_msg.hpp>
 #include <pcl_conversions/pcl_conversions.h>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -60,16 +62,16 @@ namespace zjloc
          * @param msg
          * @param pcl_out
          */
-        // void Process(const livox_ros_driver::CustomMsg::ConstPtr &msg, FullCloudPtr &pcl_out);
-        void Process(const livox_ros_driver::CustomMsg::ConstPtr &msg, std::vector<point3D> &pcl_out);
+        // void Process(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg, FullCloudPtr &pcl_out);
+        void Process(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg, std::vector<point3D> &pcl_out);
 
         /**
          * 处理sensor_msgs::PointCloud2点云
          * @param msg
          * @param pcl_out
          */
-        void Process(const sensor_msgs::PointCloud2::ConstPtr &msg, std::vector<point3D> &pcl_out);
-        // void Process(const sensor_msgs::PointCloud2::ConstPtr &msg, FullCloudPtr &pcl_out);
+        void Process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg, std::vector<point3D> &pcl_out);
+        // void Process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg, FullCloudPtr &pcl_out);
 
         /// 从YAML中读取参数
         void LoadFromYAML(const std::string &yaml);
@@ -82,11 +84,11 @@ namespace zjloc
         LidarType lidar_type_ = LidarType::AVIA; // 雷达类型
 
     private:
-        void AviaHandler(const livox_ros_driver::CustomMsg::ConstPtr &msg);
-        void Oust64Handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
-        void VelodyneHandler(const sensor_msgs::PointCloud2::ConstPtr &msg);
-        void RobosenseHandler(const sensor_msgs::PointCloud2::ConstPtr &msg);
-        void PandarHandler(const sensor_msgs::PointCloud2::ConstPtr &msg);
+        void AviaHandler(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg);
+        void Oust64Handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
+        void VelodyneHandler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
+        void RobosenseHandler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
+        void PandarHandler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
 
         std::vector<point3D> cloud_full_, cloud_out_; //  输出点云
         CVTParam param_;

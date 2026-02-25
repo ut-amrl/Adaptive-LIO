@@ -1,9 +1,6 @@
 # 引入该目录下的.cmake文件
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
-include_directories(${CMAKE_SOURCE_DIR}/../devel/include) # 引用ros生成的msg header
-
-
 #       system config
 message("Current CPU archtecture: ${CMAKE_SYSTEM_PROCESSOR}")
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)" )
@@ -56,22 +53,23 @@ link_directories(${PCL_LIBRARY_DIRS})
 # opencv
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
-link_libraries(${CERES_LIBRARY_DIRS})
 
 #ceres
 find_package(Ceres 2 REQUIRED )
 include_directories( ${CERES_INCLUDE_DIRS})
 link_directories(${CERES_LIBRARY_DIRS})
 
-find_package(catkin REQUIRED COMPONENTS
-        roscpp
-        rospy
-        std_msgs
-        sensor_msgs
-        pcl_ros
-        pcl_conversions
-        )
-include_directories(${catkin_INCLUDE_DIRS})
+find_package(rclcpp REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(pcl_ros REQUIRED)
+find_package(pcl_conversions REQUIRED)
+find_package(livox_ros_driver2 REQUIRED)
 
 # yaml-cpp
 find_package(yaml-cpp REQUIRED)
@@ -112,7 +110,6 @@ endif ()
 
 
     set(third_party_libs
-        ${catkin_LIBRARIES}
         ${OpenCV_LIBS}
         ${PCL_LIBRARIES}
         ${CERES_LIBRARIES}
@@ -121,3 +118,17 @@ endif ()
         yaml-cpp
         robin_map
             )
+
+set(ros2_deps
+    rclcpp
+    sensor_msgs
+    nav_msgs
+    geometry_msgs
+    std_msgs
+    tf2
+    tf2_ros
+    tf2_geometry_msgs
+    pcl_ros
+    pcl_conversions
+    livox_ros_driver2
+)

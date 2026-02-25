@@ -10,18 +10,24 @@
 
 #include "lio_utils.h"
 
-class PoseParameterization : public ceres::LocalParameterization
+class PoseParameterization : public ceres::Manifold
 {
-    virtual bool Plus(const double *x, const double *delta, double *x_plus_delta) const;
-    virtual bool ComputeJacobian(const double *x, double *jacobian) const;
-    virtual int GlobalSize() const { return 7; };
-    virtual int LocalSize() const { return 6; };
+public:
+    bool Plus(const double *x, const double *delta, double *x_plus_delta) const override;
+    bool PlusJacobian(const double *x, double *jacobian) const override;
+    bool Minus(const double *y, const double *x, double *y_minus_x) const override;
+    bool MinusJacobian(const double *x, double *jacobian) const override;
+    int AmbientSize() const override { return 7; }
+    int TangentSize() const override { return 6; }
 };
 
-class RotationParameterization : public ceres::LocalParameterization
+class RotationParameterization : public ceres::Manifold
 {
-    virtual bool Plus(const double *x, const double *delta, double *x_plus_delta) const;
-    virtual bool ComputeJacobian(const double *x, double *jacobian) const;
-    virtual int GlobalSize() const { return 4; };
-    virtual int LocalSize() const { return 3; };
+public:
+    bool Plus(const double *x, const double *delta, double *x_plus_delta) const override;
+    bool PlusJacobian(const double *x, double *jacobian) const override;
+    bool Minus(const double *y, const double *x, double *y_minus_x) const override;
+    bool MinusJacobian(const double *x, double *jacobian) const override;
+    int AmbientSize() const override { return 4; }
+    int TangentSize() const override { return 3; }
 };

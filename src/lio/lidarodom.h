@@ -21,7 +21,6 @@
 #include "preprocess/cloud_convert/cloud_convert_interface.hpp"
 
 #include <sys/times.h>
-#include <sys/vtimes.h>
 
 namespace zjloc
 {

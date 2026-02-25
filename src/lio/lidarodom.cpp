@@ -446,7 +446,7 @@ namespace zjloc
                ceres::Problem::Options problem_options;
                ceres::Problem problem(problem_options);
 
-               auto *parameterization = new ceres::EigenQuaternionParameterization();
+               auto *parameterization = new ceres::EigenQuaternionManifold();
 
                switch (options_.icpmodel)
                {

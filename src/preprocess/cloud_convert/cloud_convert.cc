@@ -1,5 +1,9 @@
 #include "cloud_convert.h"
 
+#include <algorithm>
+#include <cmath>
+#include <iostream>
+
 #include <glog/logging.h>
 #include <yaml-cpp/yaml.h>
 // #include <execution>
@@ -7,13 +11,13 @@
 namespace zjloc
 {
 
-    void CloudConvert::Process(const livox_ros_driver::CustomMsg::ConstPtr &msg, std::vector<point3D> &pcl_out)
+    void CloudConvert::Process(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg, std::vector<point3D> &pcl_out)
     {
         AviaHandler(msg);
         pcl_out = cloud_out_;
     }
 
-    void CloudConvert::Process(const sensor_msgs::PointCloud2::ConstPtr &msg,
+    void CloudConvert::Process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg,
                                std::vector<point3D> &pcl_out)
     {
         switch (param_.lidar_type)
@@ -41,7 +45,7 @@ namespace zjloc
         pcl_out = cloud_out_;
     }
 
-    void CloudConvert::AviaHandler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
+    void CloudConvert::AviaHandler(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg)
     {
         cloud_out_.clear();
         cloud_full_.clear();
@@ -50,7 +54,7 @@ namespace zjloc
 
         static double tm_scale = 1e9;
 
-        double headertime = msg->header.stamp.toSec();
+        double headertime = rclcpp::Time(msg->header.stamp).seconds();
         timespan_ = msg->points.back().offset_time / tm_scale;
 
         // std::cout << "span:" << timespan_ << ",0: " << msg->points[0].offset_time / tm_scale
@@ -93,7 +97,7 @@ namespace zjloc
         }
     }
 
-    void CloudConvert::Oust64Handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+    void CloudConvert::Oust64Handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg)
     {
         cloud_out_.clear();
         cloud_full_.clear();
@@ -104,7 +108,7 @@ namespace zjloc
 
         static double tm_scale = 1e9;
 
-        double headertime = msg->header.stamp.toSec();
+        double headertime = rclcpp::Time(msg->header.stamp).seconds();
         timespan_ = pl_orig.points.back().t / tm_scale;
         // std::cout << "span:" << timespan_ << ",0: " << pl_orig.points[0].t / tm_scale
         //           << " , 100: " << pl_orig.points[100].t / tm_scale
@@ -140,7 +144,7 @@ namespace zjloc
         }
     }
 
-    void CloudConvert::RobosenseHandler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+    void CloudConvert::RobosenseHandler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg)
     {
         cloud_out_.clear();
         cloud_full_.clear();
@@ -149,7 +153,7 @@ namespace zjloc
         int plsize = pl_orig.size();
         cloud_out_.reserve(plsize);
 
-        double headertime = msg->header.stamp.toSec();
+        double headertime = rclcpp::Time(msg->header.stamp).seconds();
         //  FIXME:  时间戳大于0.1
         auto time_list_robosense = [&](robosense_ros::Point &point_1, robosense_ros::Point &point_2)
         {
@@ -167,8 +171,8 @@ namespace zjloc
         // std::cout << timespan_ << std::endl;
 
         // std::cout << pl_orig.points[1].timestamp - pl_orig.points[0].timestamp << ", "
-        //           << msg->header.stamp.toSec() - pl_orig.points[0].timestamp << ", "
-        //           << msg->header.stamp.toSec() - pl_orig.points.back().timestamp << std::endl;
+        //           << rclcpp::Time(msg->header.stamp).seconds() - pl_orig.points[0].timestamp << ", "
+        //           << rclcpp::Time(msg->header.stamp).seconds() - pl_orig.points.back().timestamp << std::endl;
 
         for (int i = 0; i < pl_orig.points.size(); i++)
         {
@@ -203,7 +207,7 @@ namespace zjloc
         }
     }
 
-    void CloudConvert::VelodyneHandler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+    void CloudConvert::VelodyneHandler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg)
     {
         cloud_out_.clear();
         cloud_full_.clear();
@@ -213,7 +217,7 @@ namespace zjloc
         int plsize = pl_orig.points.size();
         cloud_out_.reserve(plsize);
 
-        double headertime = msg->header.stamp.toSec();
+        double headertime = rclcpp::Time(msg->header.stamp).seconds();
 
         static double tm_scale = 1; //   1e6 - nclt kaist or 1
 
@@ -263,7 +267,7 @@ namespace zjloc
         }
     }
 
-    void CloudConvert::PandarHandler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+    void CloudConvert::PandarHandler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg)
     {
         cloud_out_.clear();
         cloud_full_.clear();
@@ -273,7 +277,7 @@ namespace zjloc
         int plsize = pl_orig.points.size();
         cloud_out_.reserve(plsize);
 
-        double headertime = msg->header.stamp.toSec();
+        double headertime = rclcpp::Time(msg->header.stamp).seconds();
 
         static double tm_scale = 1; //   1e6
 
@@ -291,8 +295,8 @@ namespace zjloc
 
         // std::cout << "span:" << timespan_ << ",0: " << pl_orig.points[1].timestamp - pl_orig.points[0].timestamp
         //           << " , 100: " << pl_orig.points[100].timestamp - pl_orig.points[0].timestamp
-        //           << msg->header.stamp.toSec() - pl_orig.points[0].timestamp << ", "
-        //           << msg->header.stamp.toSec() - pl_orig.points.back().timestamp << std::endl;
+        //           << rclcpp::Time(msg->header.stamp).seconds() - pl_orig.points[0].timestamp << ", "
+        //           << rclcpp::Time(msg->header.stamp).seconds() - pl_orig.points.back().timestamp << std::endl;
 
         for (int i = 0; i < plsize; i++)
         {
