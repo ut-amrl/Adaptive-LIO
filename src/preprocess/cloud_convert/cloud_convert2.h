@@ -78,6 +78,7 @@ namespace zjloc
         LidarType lidar_type_ = LidarType::AVIA; // 雷达类型
 
     private:
+        bool PassFrontFov(double x, double y) const;
         void reset();
         void adaCut();
         void AviaHandler(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg);
@@ -94,6 +95,10 @@ namespace zjloc
 
         int point_filter_num_ = 1; // 跳点
         double blind = 0.1;
+        double front_fov_deg_ = 360.0;
+        double front_half_fov_rad_ = 3.14159265358979323846;
+        double front_fov_center_deg_ = 0.0;
+        double front_center_rad_ = 0.0;
         int sweep_cut_num = 1.0;
         double delta_time = 0.1;
         int degenerate_window_num = 5;

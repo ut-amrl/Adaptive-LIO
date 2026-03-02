@@ -10,6 +10,17 @@
 
 namespace zjloc
 {
+    bool CloudConvert2::PassFrontFov(double x, double y) const
+    {
+        constexpr double kPi = 3.14159265358979323846;
+        if (front_half_fov_rad_ >= kPi - 1e-6)
+        {
+            return true;
+        }
+        const double yaw = std::atan2(y, x);
+        const double delta = std::remainder(yaw - front_center_rad_, 2.0 * kPi);
+        return std::abs(delta) <= front_half_fov_rad_;
+    }
 
     void CloudConvert2::Process(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg,
                                 std::vector<std::vector<point3D>> &pcl_out,
@@ -99,6 +110,8 @@ namespace zjloc
                            msg->points[i].z * msg->points[i].z;
             if (range > 250 * 250 || range < blind * blind)
                 continue;
+            if (!PassFrontFov(msg->points[i].x, msg->points[i].y))
+                continue;
 
             if (/*(msg->points[i].line < N_SCANS) &&*/ ((msg->points[i].tag & 0x30) == 0x10 || (msg->points[i].tag & 0x30) == 0x00))
             {
@@ -171,6 +184,8 @@ namespace zjloc
             double range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y +
                            pl_orig.points[i].z * pl_orig.points[i].z;
             if (range > 150 * 150 || range < blind * blind)
+                continue;
+            if (!PassFrontFov(pl_orig.points[i].x, pl_orig.points[i].y))
                 continue;
 
             point3D point_temp;
@@ -252,6 +267,8 @@ namespace zjloc
             double range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y +
                            pl_orig.points[i].z * pl_orig.points[i].z;
             if (range > 150 * 150 || range < blind * blind)
+                continue;
+            if (!PassFrontFov(pl_orig.points[i].x, pl_orig.points[i].y))
                 continue;
 
             point3D point_temp;
@@ -335,6 +352,8 @@ namespace zjloc
                            pl_orig.points[i].z * pl_orig.points[i].z;
             if (range > 150 * 150 || range < blind * blind)
                 continue;
+            if (!PassFrontFov(pl_orig.points[i].x, pl_orig.points[i].y))
+                continue;
 
             point3D point_temp;
             point_temp.raw_point = Eigen::Vector3d(pl_orig.points[i].x, pl_orig.points[i].y, pl_orig.points[i].z);
@@ -415,6 +434,8 @@ namespace zjloc
                            pl_orig.points[i].z * pl_orig.points[i].z;
             if (range > 150 * 150 || range < blind * blind)
                 continue;
+            if (!PassFrontFov(pl_orig.points[i].x, pl_orig.points[i].y))
+                continue;
 
             point3D point_temp;
             point_temp.raw_point = Eigen::Vector3d(pl_orig.points[i].x, pl_orig.points[i].y, pl_orig.points[i].z);
@@ -469,9 +490,23 @@ namespace zjloc
         point_filter_num_ = yaml["preprocess"]["point_filter_num"].as<int>();
         sweep_cut_num = yaml["preprocess"]["sweep_cut_num"].as<int>();
         blind = yaml["preprocess"]["blind"].as<double>();
+        if (yaml["preprocess"]["front_fov_deg"])
+        {
+            front_fov_deg_ = yaml["preprocess"]["front_fov_deg"].as<double>();
+        }
+        if (yaml["preprocess"]["front_fov_center_deg"])
+        {
+            front_fov_center_deg_ = yaml["preprocess"]["front_fov_center_deg"].as<double>();
+        }
+        front_fov_deg_ = std::clamp(front_fov_deg_, 0.0, 360.0);
+        front_half_fov_rad_ = front_fov_deg_ * 3.14159265358979323846 / 360.0;
+        front_fov_center_deg_ = std::remainder(front_fov_center_deg_, 360.0);
+        front_center_rad_ = front_fov_center_deg_ * 3.14159265358979323846 / 180.0;
         degenerate_window_num = yaml["preprocess"]["degenerate_window_num"].as<double>();
-        LOG(INFO) << "Sweep cut num: " << sweep_cut_num << ", degenerate_window_num: "
-                  << degenerate_window_num << std::endl;
+        LOG(INFO) << "Sweep cut num: " << sweep_cut_num
+                  << ", degenerate_window_num: " << degenerate_window_num
+                  << ", front_fov_deg: " << front_fov_deg_
+                  << ", front_fov_center_deg: " << front_fov_center_deg_ << std::endl;
 
         if (lidar_type == 1)
         {

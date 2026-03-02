@@ -150,7 +150,36 @@ ROS_DISTRO=jazzy docker compose -f docker/compose.yaml build
 ROS_DISTRO=jazzy docker compose -f docker/compose.yaml run --rm adaptive_lio
 ```
 
-### 3. Launch Adaptive-LIO
+### 3. One-command processing pipeline (recommended)
+Set robot topics in your config file (for example `config/mapping_m.yaml`):
+- `common.imu_topic`
+- `common.lid_topic`
+
+Then run from host:
+```bash
+ROS_DISTRO=jazzy ./scripts/pipeline.sh run \
+  --bag-path /data/ARL_Jackal/rosbags/2-17-pickle/run_05_pickle-north-baseline_2026-02-17-10-52-50/ \
+  --config-file config/mapping_m.yaml \
+  --rate auto
+```
+
+What this does:
+- Launches Adaptive-LIO (+ RViz by default)
+- Plays only IMU + LiDAR topics from the config file
+- Logs trajectory CSV to `logs/<timestamp>/<bag>_trajectory.csv` with:
+  `timestamp,x,y,z,qx,qy,qz,qw`
+- Supports automatic playback rate fallback in `auto` mode
+
+Batch mode (one bag path per line in txt, `#` comments supported):
+```bash
+ROS_DISTRO=jazzy ./scripts/pipeline.sh run \
+  --bag-list /data/ARL_Jackal/rosbags/bag_list.txt \
+  --config-file config/mapping_m.yaml \
+  --rate auto \
+  --rviz false
+```
+
+### 4. Launch Adaptive-LIO manually
 Inside the container:
 ```bash
 ros2 launch adaptive_lio run.launch.py rviz:=true
@@ -162,8 +191,10 @@ You can override the config path:
 ros2 launch adaptive_lio run.launch.py config_file:=/root/adaptive_lio_ws/src/adaptive_lio/config/mapping_m.yaml
 ```
 
-`config/mapping_m.yaml` is preset for ARL Lonebot (from `FAST_LIO_ROS2/config/arl_lonebot.yaml`):
+`config/mapping_lonebot.yaml` is preset for ARL Lonebot (from `FAST_LIO_ROS2/config/arl_lonebot.yaml`):
 - `preprocess.lidar_type: 3`
+- `preprocess.front_fov_deg`: keep angular sector in LiDAR XY plane (`360.0` disables filtering)
+- `preprocess.front_fov_center_deg`: center direction of the kept sector (degrees, default `0.0` = +X)
 - `common.lid_topic: /lonebot/sensors/ouster/points`
 - `common.imu_topic: /lonebot/sensors/microstrain/imu/data`
 - `mapping.extrinsic_T/R`: Lonebot IMU-LiDAR calibration
@@ -190,17 +221,17 @@ ros2 launch adaptive_lio run.launch.py \
   bag_lidar_topic:=/lonebot/sensors/ouster/points
 ```
 
-### 4. Sensor workflows
+### 5. Sensor workflows
 - Livox (CustomMsg): set `preprocess.lidar_type: 1` and run `livox_ros_driver2`.
 - Ouster (PointCloud2): `config/mapping_m.yaml` already targets Lonebot Ouster + Microstrain.
 
-### 5. Rosbag2 playback
+### 6. Rosbag2 playback
 Manual playback (if you do not use `play_bag:=true`):
 ```bash
 ros2 bag play /path/to/your_bag
 ```
 
-### 6. PlotJuggler in Docker
+### 7. PlotJuggler in Docker
 On host (once per shell):
 ```bash
 xhost +si:localuser:root

@@ -41,10 +41,16 @@ fi
 
 install_setup="${ws}/install/setup.bash"
 need_build=0
+force_rebuild="${FORCE_REBUILD:-0}"
 if [ ! -f "$install_setup" ]; then
   need_build=1
 elif find "${ws}/src" -type f -newer "$install_setup" -print -quit | grep -q .; then
   need_build=1
+fi
+
+if [ "${force_rebuild}" = "1" ] || [ "${force_rebuild}" = "true" ] || [ "${force_rebuild}" = "TRUE" ]; then
+  need_build=1
+  log "FORCE_REBUILD is enabled; rebuilding Adaptive-LIO"
 fi
 
 if [ "$need_build" -eq 0 ]; then

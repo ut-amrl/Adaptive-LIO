@@ -2,20 +2,22 @@ YAML: 1.0
 
 preprocess:
   point_filter_num: 1
-  lidar_type: 1 # 1-AVIA 2-velodyne 3-ouster  4-robosense 5-pandar
-  blind: 0.1
+  lidar_type: 3 # 1-AVIA 2-velodyne 3-ouster  4-robosense 5-pandar
+  blind: 1.0
+  front_fov_deg: 270.0
+  front_fov_center_deg: 180.0 # Lonebot forward aligns near LiDAR -X
   sweep_cut_num: 1
   degenerate_window_num: 10
 
 common:
-  imu_topic: /livox/imu #/imu_raw   /gps/gtimu
-  lid_topic: /livox/lidar #/points_raw  /rslidar_points /velodyne_points
-  gnorm: 9.805 # 9.805    # 部分数据，加速度模长为1->9.805gnorm
+  imu_topic: /lonebot/sensors/microstrain/imu/data # /lonebot/sensors/ouster/imu
+  lid_topic: /lonebot/sensors/ouster/points
+  gnorm: 1 # 9.805    # 部分数据，加速度模长为1->9.805gnorm
 
 mapping:
-  extrinsic_est_en: true
-  extrinsic_T: [0.0, 0.0, -0.0]
-  extrinsic_R: [1, 0, 0, 0, 1, 0, 0, 0, 1]
+  extrinsic_est_en: false
+  extrinsic_T: [-0.048274, -0.008129, 0.331177]
+  extrinsic_R: [-0.99992653, 0.00344102, 0.01162315, -0.00336836, -0.99997470, 0.00626516, 0.01164442, 0.00622555, 0.99991282]
 
 map_options:
   map_type: MULTI_RESOLUTION_VOXEL_HASHMAP
@@ -25,12 +27,12 @@ map_options:
       min_distance_between_points: 0.05
     - resolution: 0.5
       max_num_points: 20
-      min_distance_between_points: 0.08
+      min_distance_between_points: 0.15
     - resolution: 1.2
       max_num_points: 40
-      min_distance_between_points: 0.18
+      min_distance_between_points: 0.2
   neig_options:
-    distance_max: 60
+    distance_max: 80
     radius_min: 0.2
     radius_max: 1.2
     exponent: 1.0
@@ -38,7 +40,7 @@ map_options:
 delay_time: 0.2
 
 odometry:
-  surf_res: 0.1
+  surf_res: 0.5
   log_print: false
   max_num_iteration: 10
   # ct_icp
@@ -49,23 +51,23 @@ odometry:
   max_distance: 500.0 # The threshold of the distance to suppress voxels from the map
   weight_alpha: 0.9
   weight_neighborhood: 0.1
-  max_dist_to_plane_icp: 0.2 # This is important
+  max_dist_to_plane_icp: 0.5 # This is important
   init_num_frames: 20
   voxel_neighborhood: 1
-  max_number_neighbors: 20
-  threshold_voxel_occupancy: 1
+  max_number_neighbors: 30
+  threshold_voxel_occupancy: 3
   estimate_normal_from_neighborhood: true
   min_number_neighbors: 20 # The minimum number of neighbor points to define a valid neighborhood
   power_planarity: 2.0
   num_closest_neighbors: 1
 
-  sampling_rate: 1.
-  max_num_residuals: 1000
+  sampling_rate: 1.5
+  max_num_residuals: 1200
   min_num_residuals: 50
-  motion_compensation: CONTINUOUS #NONE, CONSTANT_VELOCITY, ITERATIVE, CONTINUOUS
+  motion_compensation: CONSTANT_VELOCITY #NONE, CONSTANT_VELOCITY, ITERATIVE, CONTINUOUS
   beta_location_consistency: 0.001
   beta_orientation_consistency: 0.1
-  beta_constant_velocity: 0.001
+  beta_constant_velocity: 0.0001
   beta_small_velocity: 0.0
 
   thres_translation_norm: 0.01 # m
