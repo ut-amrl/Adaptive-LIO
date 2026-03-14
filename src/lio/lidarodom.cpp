@@ -1,6 +1,39 @@
 #include "common/config.hpp"
 #include "lidarodom.h"
 
+#include <ceres/version.h>
+
+namespace
+{
+
+#if CERES_VERSION_MAJOR > 2 || (CERES_VERSION_MAJOR == 2 && CERES_VERSION_MINOR >= 1)
+using QuaternionParameterization = ceres::Manifold;
+
+QuaternionParameterization *MakeQuaternionParameterization()
+{
+     return new ceres::EigenQuaternionManifold();
+}
+
+void AddQuaternionParameterBlock(ceres::Problem &problem, double *values, QuaternionParameterization *parameterization)
+{
+     problem.AddParameterBlock(values, 4, parameterization);
+}
+#else
+using QuaternionParameterization = ceres::LocalParameterization;
+
+QuaternionParameterization *MakeQuaternionParameterization()
+{
+     return new ceres::EigenQuaternionParameterization();
+}
+
+void AddQuaternionParameterBlock(ceres::Problem &problem, double *values, QuaternionParameterization *parameterization)
+{
+     problem.AddParameterBlock(values, 4, parameterization);
+}
+#endif
+
+} // namespace
+
 namespace zjloc
 {
 
@@ -446,18 +479,18 @@ namespace zjloc
                ceres::Problem::Options problem_options;
                ceres::Problem problem(problem_options);
 
-               auto *parameterization = new ceres::EigenQuaternionManifold();
+               auto *parameterization = MakeQuaternionParameterization();
 
                switch (options_.icpmodel)
                {
                case IcpModel::CT_POINT_TO_PLANE:
-                    problem.AddParameterBlock(&begin_quat.x(), 4, parameterization);
-                    problem.AddParameterBlock(&end_quat.x(), 4, parameterization);
+                    AddQuaternionParameterBlock(problem, &begin_quat.x(), parameterization);
+                    AddQuaternionParameterBlock(problem, &end_quat.x(), parameterization);
                     problem.AddParameterBlock(&begin_t.x(), 3);
                     problem.AddParameterBlock(&end_t.x(), 3);
                     break;
                case IcpModel::POINT_TO_PLANE:
-                    problem.AddParameterBlock(&end_quat.x(), 4, parameterization);
+                    AddQuaternionParameterBlock(problem, &end_quat.x(), parameterization);
                     problem.AddParameterBlock(&end_t.x(), 3);
                     break;
                }

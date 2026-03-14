@@ -13,7 +13,7 @@ safe_source() {
   fi
 }
 
-ros_distro="${ROS_DISTRO:-jazzy}"
+ros_distro="${ROS_DISTRO:-humble}"
 ros_setup="/opt/ros/${ros_distro}/setup.bash"
 
 log "starting (ROS_DISTRO=${ros_distro})"

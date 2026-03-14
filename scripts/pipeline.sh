@@ -9,7 +9,7 @@ Usage:
   scripts/pipeline.sh help
 
 Environment:
-  ROS_DISTRO                 Required (example: ROS_DISTRO=jazzy)
+  ROS_DISTRO                 Optional (default: humble; override with ROS_DISTRO=jazzy)
   DATA_MOUNT                 Host path mounted to /data (default: /home/domlee/mnt/ARL_SARA)
 
 Run options:
@@ -142,6 +142,7 @@ if [[ $# -gt 0 ]]; then
 fi
 
 DATA_MOUNT="${DATA_MOUNT:-/home/domlee/mnt/ARL_SARA}"
+ROS_DISTRO="${ROS_DISTRO:-humble}"
 
 case "${SUBCOMMAND}" in
   help|-h|--help)
@@ -149,18 +150,10 @@ case "${SUBCOMMAND}" in
     exit 0
     ;;
   build)
-    if [[ -z "${ROS_DISTRO:-}" ]]; then
-      echo "ROS_DISTRO is required. Example: ROS_DISTRO=jazzy scripts/pipeline.sh build" >&2
-      exit 2
-    fi
     env ROS_DISTRO="${ROS_DISTRO}" docker compose -f "${COMPOSE_FILE}" build adaptive_lio
     exit 0
     ;;
   run)
-    if [[ -z "${ROS_DISTRO:-}" ]]; then
-      echo "ROS_DISTRO is required. Example: ROS_DISTRO=jazzy scripts/pipeline.sh run ..." >&2
-      exit 2
-    fi
     ;;
   *)
     echo "Unknown command: ${SUBCOMMAND}" >&2

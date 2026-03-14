@@ -4,8 +4,8 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
       args:
-        ROS_DISTRO: ${ROS_DISTRO:-jazzy}
-    image: adaptive-lio-ros2:${ROS_DISTRO:-jazzy}
+        ROS_DISTRO: ${ROS_DISTRO:-humble}
+    image: adaptive-lio-ros2:${ROS_DISTRO:-humble}
     network_mode: host
     privileged: true
     stdin_open: true
@@ -13,7 +13,7 @@ services:
     gpus: all
 
     environment:
-      ROS_DISTRO: ${ROS_DISTRO:-jazzy}
+      ROS_DISTRO: ${ROS_DISTRO:-humble}
       DISPLAY: ${DISPLAY:-:0}
       XAUTHORITY: ${XAUTHORITY:-$HOME/.Xauthority}
       QT_X11_NO_MITSHM: "1"
@@ -27,8 +27,8 @@ services:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ${XAUTHORITY:-$HOME/.Xauthority}:${XAUTHORITY:-$HOME/.Xauthority}:ro
       - ../:/root/adaptive_lio_ws/src/adaptive_lio:rw
-      - ./.adaptive_lio_cache/${ROS_DISTRO:-jazzy}/build:/root/adaptive_lio_ws/build:rw
-      - ./.adaptive_lio_cache/${ROS_DISTRO:-jazzy}/install:/root/adaptive_lio_ws/install:rw
-      - ./.adaptive_lio_cache/${ROS_DISTRO:-jazzy}/log:/root/adaptive_lio_ws/log:rw
+      - ./.adaptive_lio_cache/${ROS_DISTRO:-humble}/build:/root/adaptive_lio_ws/build:rw
+      - ./.adaptive_lio_cache/${ROS_DISTRO:-humble}/install:/root/adaptive_lio_ws/install:rw
+      - ./.adaptive_lio_cache/${ROS_DISTRO:-humble}/log:/root/adaptive_lio_ws/log:rw
 
     command: ["bash", "-lc", "tmux new -A -s adaptive_lio"]
