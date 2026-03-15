@@ -138,117 +138,64 @@ The emerging Internet of Things (IoT) applications, such as driverless cars, hav
 
 
 
-## 🕹️Quickly Run (ROS2 Jazzy Docker)
+## Docker Odom Quickstart
 
-### 1. Build docker image
+### 1. Build once
 ```bash
-ROS_DISTRO=jazzy docker compose -f docker/compose.yaml build
+ROS_DISTRO=humble bash scripts/pipeline.sh build
 ```
 
-### 2. Run docker
+### 2. Run one bag
+Use `config/mapping_lonebot.yaml` for Lonebot. `config/mapping_wanda.yaml` and `config/mapping_m.yaml` are other presets.
+
 ```bash
-ROS_DISTRO=jazzy docker compose -f docker/compose.yaml run --rm adaptive_lio
+ROS_DISTRO=humble bash scripts/pipeline.sh run \
+  --bag-path /abs/path/to/bag \
+  --config-file config/mapping_lonebot.yaml
 ```
 
-### 3. One-command processing pipeline (recommended)
-Set robot topics in your config file (for example `config/mapping_m.yaml`):
-- `common.imu_topic`
-- `common.lid_topic`
-
-Then run from host:
+If you want to pass bag paths as `/data/...`, set the host dataset root first:
 ```bash
-ROS_DISTRO=jazzy ./scripts/pipeline.sh run \
-  --bag-path /data/ARL_Jackal/rosbags/2-17-pickle/run_05_pickle-north-baseline_2026-02-17-10-52-50/ \
-  --config-file config/mapping_m.yaml \
-  --rate auto
+export DATA_MOUNT=/abs/path/to/datasets
+ROS_DISTRO=humble bash scripts/pipeline.sh run \
+  --bag-path /data/path/to/bag \
+  --config-file config/mapping_lonebot.yaml
 ```
 
-What this does:
-- Launches Adaptive-LIO (+ RViz by default)
-- Plays only IMU + LiDAR topics from the config file
-- Logs trajectory CSV to `logs/<timestamp>/<bag>_trajectory.csv` with:
-  `timestamp,x,y,z,qx,qy,qz,qw`
-- Supports automatic playback rate fallback in `auto` mode
+### 3. Run many bags
+One bag path per line. `#` comments are ignored.
 
-Batch mode (one bag path per line in txt, `#` comments supported):
 ```bash
-ROS_DISTRO=jazzy ./scripts/pipeline.sh run \
-  --bag-list /data/ARL_Jackal/rosbags/bag_list.txt \
-  --config-file config/mapping_m.yaml \
-  --rate auto \
-  --rviz false
+ROS_DISTRO=humble bash scripts/pipeline.sh run \
+  --bag-list bagfile_list.txt \
+  --config-file config/mapping_lonebot.yaml
 ```
 
-### 4. Launch Adaptive-LIO manually
+### 4. What you get
+- CSV odometry in `logs/<timestamp>/<bag>_trajectory.csv`
+- IMU + LiDAR topic playback from the config by default
+- Automatic retry at `0.5x` when `--rate auto` gets no odometry at `1.0x`
+
+### 5. Useful options
+- `--rviz true`
+- `--rate auto|<num>`
+- `--all-topics`
+- `--imu-topic <topic>`
+- `--lidar-topic <topic>`
+- `--log-dir <path>`
+- `bash scripts/pipeline.sh help`
+
+If Humble cannot read a newer rosbag2/MCAP `metadata.yaml`, rerun with `ROS_DISTRO=jazzy`.
+
+Manual fallback:
+```bash
+ROS_DISTRO=humble docker compose -f docker/compose.yaml run --rm adaptive_lio
+```
+
 Inside the container:
 ```bash
-ros2 launch adaptive_lio run.launch.py rviz:=true
+ros2 launch adaptive_lio run.launch.py config_file:=/root/adaptive_lio_ws/src/adaptive_lio/config/mapping_lonebot.yaml rviz:=true
 ```
-The default RViz config uses `map` as Fixed Frame.
-
-You can override the config path:
-```bash
-ros2 launch adaptive_lio run.launch.py config_file:=/root/adaptive_lio_ws/src/adaptive_lio/config/mapping_m.yaml
-```
-
-`config/mapping_lonebot.yaml` is preset for ARL Lonebot (from `FAST_LIO_ROS2/config/arl_lonebot.yaml`):
-- `preprocess.lidar_type: 3`
-- `preprocess.front_fov_deg`: keep angular sector in LiDAR XY plane (`360.0` disables filtering)
-- `preprocess.front_fov_center_deg`: center direction of the kept sector (degrees, default `0.0` = +X)
-- `common.lid_topic: /lonebot/sensors/ouster/points`
-- `common.imu_topic: /lonebot/sensors/microstrain/imu/data`
-- `mapping.extrinsic_T/R`: Lonebot IMU-LiDAR calibration
-
-Single-terminal run (Adaptive-LIO + rviz2 + rosbag2 playback together):
-```bash
-ros2 launch adaptive_lio run.launch.py \
-  rviz:=true \
-  play_bag:=true \
-  bag_path:=/data/ARL_Jackal/rosbags/2-17-pickle/run_05_pickle-north-baseline_2026-02-17-10-52-50/ \
-  bag_read_ahead_queue_size:=5000
-```
-
-If rosbag read-ahead starves, run at 0.5x and publish only IMU + LiDAR:
-```bash
-ros2 launch adaptive_lio run.launch.py \
-  rviz:=true \
-  play_bag:=true \
-  bag_path:=/data/ARL_Jackal/rosbags/2-17-pickle/run_05_pickle-north-baseline_2026-02-17-10-52-50/ \
-  bag_rate:=0.5 \
-  bag_read_ahead_queue_size:=5000 \
-  bag_only_imu_and_lidar:=true \
-  bag_imu_topic:=/lonebot/sensors/microstrain/imu/data \
-  bag_lidar_topic:=/lonebot/sensors/ouster/points
-```
-
-### 5. Sensor workflows
-- Livox (CustomMsg): set `preprocess.lidar_type: 1` and run `livox_ros_driver2`.
-- Ouster (PointCloud2): `config/mapping_m.yaml` already targets Lonebot Ouster + Microstrain.
-
-### 6. Rosbag2 playback
-Manual playback (if you do not use `play_bag:=true`):
-```bash
-ros2 bag play /path/to/your_bag
-```
-
-### 7. PlotJuggler in Docker
-On host (once per shell):
-```bash
-xhost +si:localuser:root
-```
-
-Launch PlotJuggler in container:
-```bash
-ROS_DISTRO=jazzy docker compose -f docker/compose.yaml run --rm \
-  --entrypoint bash adaptive_lio -lc '
-source /opt/ros/jazzy/setup.bash
-source /root/livox_ws/install/setup.bash
-source /root/adaptive_lio_ws/install/setup.bash
-ros2 run plotjuggler plotjuggler
-'
-```
-
-If you see `qt.qpa.xcb: could not connect to display`, ensure `DISPLAY` is exported on host and X11 access is enabled with `xhost`.
 
 
 ## Publications
