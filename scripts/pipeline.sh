@@ -182,7 +182,6 @@ handle_interrupt() {
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd -P)"
 COMPOSE_FILE="${REPO_ROOT}/docker/compose.yaml"
-INNER_SCRIPT="/root/adaptive_lio_ws/src/adaptive_lio/scripts/pipeline_inside_container.sh"
 
 SUBCOMMAND="${1:-run}"
 if [[ $# -gt 0 ]]; then
@@ -309,11 +308,6 @@ if [[ ! -f "${COMPOSE_FILE}" ]]; then
   exit 1
 fi
 
-if [[ ! -f "${REPO_ROOT}/scripts/pipeline_inside_container.sh" ]]; then
-  echo "missing inner pipeline runner: ${REPO_ROOT}/scripts/pipeline_inside_container.sh" >&2
-  exit 1
-fi
-
 validate_bool "${RVIZ}"
 validate_rate_mode
 validate_queue_size
@@ -411,6 +405,279 @@ RUN_STAMP="$(date +%Y%m%d_%H%M%S)"
 RUN_LOG_DIR="${LOG_DIR_ABS}/${RUN_STAMP}"
 mkdir -p "${RUN_LOG_DIR}"
 
+read -r -d '' INNER_SCRIPT <<'EOF' || true
+set -euo pipefail
+
+log() {
+  echo "[pipeline] $*"
+}
+
+safe_source() {
+  local path="$1"
+  if [[ -f "${path}" ]]; then
+    set +u
+    # shellcheck disable=SC1090
+    source "${path}"
+    set -u 2>/dev/null || true
+  fi
+}
+
+stop_process() {
+  local pid="${1:-}"
+  if [[ -z "${pid}" ]]; then
+    return 0
+  fi
+  if kill -0 "${pid}" >/dev/null 2>&1; then
+    kill -INT "${pid}" >/dev/null 2>&1 || true
+    for _ in $(seq 1 20); do
+      if ! kill -0 "${pid}" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.25
+    done
+    if kill -0 "${pid}" >/dev/null 2>&1; then
+      kill -TERM "${pid}" >/dev/null 2>&1 || true
+    fi
+  fi
+  wait "${pid}" >/dev/null 2>&1 || true
+}
+
+cleanup_processes() {
+  stop_process "${BAG_PID:-}"
+  BAG_PID=""
+  stop_process "${LOGGER_PID:-}"
+  LOGGER_PID=""
+  stop_process "${LAUNCH_PID:-}"
+  LAUNCH_PID=""
+}
+
+handle_interrupt() {
+  cleanup_processes
+  exit 130
+}
+
+wait_for_node() {
+  local node_name="$1"
+  local timeout_seconds="$2"
+  local monitor_pid="${3:-}"
+  local elapsed=0
+
+  while (( elapsed < timeout_seconds )); do
+    if ros2 node list 2>/dev/null | grep -qx "${node_name}"; then
+      return 0
+    fi
+    if [[ -n "${monitor_pid}" ]] && ! kill -0 "${monitor_pid}" >/dev/null 2>&1; then
+      wait "${monitor_pid}" || true
+      return 1
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  return 1
+}
+
+csv_has_rows() {
+  local csv_path="$1"
+  [[ -f "${csv_path}" ]] && [[ "$(wc -l < "${csv_path}")" -gt 1 ]]
+}
+
+read_config_topic() {
+  local topic_key="$1"
+  python3 - "${CONFIG_CONTAINER_PATH}" "${topic_key}" <<'PY'
+import sys
+import yaml
+
+config_path, topic_key = sys.argv[1], sys.argv[2]
+with open(config_path, "r", encoding="utf-8") as fh:
+    data = yaml.safe_load(fh) or {}
+
+common = data.get("common") or {}
+value = common.get(topic_key)
+if value:
+    print(value)
+    raise SystemExit(0)
+
+root = data.get("/**") or {}
+ros_params = root.get("ros__parameters") or {}
+common = ros_params.get("common") or {}
+value = common.get(topic_key)
+if value:
+    print(value)
+    raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
+
+ensure_bag_readable() {
+  local info_output
+
+  set +e
+  info_output="$(ros2 bag info "${BAG_PATH_IN_CONTAINER}" 2>&1)"
+  local status=$?
+  set -e
+
+  if [[ "${status}" -eq 0 ]]; then
+    return 0
+  fi
+
+  echo "${info_output}" >&2
+  if grep -q "yaml-cpp: error" <<<"${info_output}"; then
+    echo "Bag metadata is not readable by ROS_DISTRO=${ROS_DISTRO}." >&2
+    echo "This bag was likely recorded with a newer rosbag2 metadata schema. Try ROS_DISTRO=jazzy for playback or convert the bag metadata for Humble." >&2
+  fi
+  return 1
+}
+
+run_attempt() {
+  local rate="$1"
+  local bag_status
+  local -a play_cmd=(
+    ros2 bag play "${BAG_PATH_IN_CONTAINER}"
+    --rate "${rate}"
+    --read-ahead-queue-size "${QUEUE_SIZE}"
+  )
+
+  cleanup_processes
+  rm -f "${LOG_CSV_CONTAINER_PATH}"
+  mkdir -p "$(dirname -- "${LOG_CSV_CONTAINER_PATH}")"
+
+  ros2 launch adaptive_lio run.launch.py \
+    config_file:="${CONFIG_CONTAINER_PATH}" \
+    rviz:="${RVIZ}" \
+    play_bag:=false &
+  LAUNCH_PID=$!
+
+  if ! wait_for_node "/adaptive_lio" 30 "${LAUNCH_PID}"; then
+    echo "adaptive_lio node did not become ready" >&2
+    cleanup_processes
+    return 1
+  fi
+
+  python3 /root/adaptive_lio_ws/src/adaptive_lio/scripts/odom_csv_logger.py \
+    --topic /odom \
+    --output "${LOG_CSV_CONTAINER_PATH}" &
+  LOGGER_PID=$!
+
+  if ! wait_for_node "/odom_csv_logger" 15 "${LOGGER_PID}"; then
+    echo "odom_csv_logger node did not become ready" >&2
+    cleanup_processes
+    return 1
+  fi
+
+  if [[ "${ALL_TOPICS}" != "true" ]]; then
+    play_cmd+=(--topics "${IMU_TOPIC}" "${LIDAR_TOPIC}")
+  fi
+
+  log "playing bag at rate=${rate}"
+  set +e
+  "${play_cmd[@]}" &
+  BAG_PID=$!
+  wait "${BAG_PID}"
+  bag_status=$?
+  BAG_PID=""
+  set -e
+
+  sleep 3
+  stop_process "${LOGGER_PID:-}"
+  LOGGER_PID=""
+  stop_process "${LAUNCH_PID:-}"
+  LAUNCH_PID=""
+
+  if [[ "${bag_status}" -ne 0 ]]; then
+    echo "ros2 bag play failed with exit ${bag_status}" >&2
+    return "${bag_status}"
+  fi
+
+  if ! csv_has_rows "${LOG_CSV_CONTAINER_PATH}"; then
+    echo "No odometry rows were logged to ${LOG_CSV_CONTAINER_PATH}" >&2
+    return 10
+  fi
+
+  return 0
+}
+
+BAG_PID=""
+LOGGER_PID=""
+LAUNCH_PID=""
+ROS_DISTRO="${ROS_DISTRO:-humble}"
+
+trap cleanup_processes EXIT
+trap handle_interrupt INT TERM
+
+safe_source "/opt/ros/${ROS_DISTRO}/setup.bash"
+safe_source /root/livox_ws/install/setup.bash
+safe_source /root/adaptive_lio_ws/install/setup.bash
+
+if [[ -z "${BAG_PATH_IN_CONTAINER:-}" || -z "${CONFIG_CONTAINER_PATH:-}" || -z "${LOG_CSV_CONTAINER_PATH:-}" ]]; then
+  echo "BAG_PATH_IN_CONTAINER, CONFIG_CONTAINER_PATH, and LOG_CSV_CONTAINER_PATH are required" >&2
+  exit 2
+fi
+
+if [[ ! -e "${BAG_PATH_IN_CONTAINER}" ]]; then
+  echo "bag path not found: ${BAG_PATH_IN_CONTAINER}" >&2
+  exit 1
+fi
+
+if [[ ! -f "${CONFIG_CONTAINER_PATH}" ]]; then
+  echo "config file not found: ${CONFIG_CONTAINER_PATH}" >&2
+  exit 1
+fi
+
+ensure_bag_readable
+
+if [[ "${ALL_TOPICS}" != "true" ]]; then
+  if [[ -n "${IMU_TOPIC_OVERRIDE:-}" ]]; then
+    IMU_TOPIC="${IMU_TOPIC_OVERRIDE}"
+  else
+    IMU_TOPIC="$(read_config_topic "imu_topic")" || {
+      echo "Failed to read common.imu_topic from ${CONFIG_CONTAINER_PATH}" >&2
+      exit 1
+    }
+  fi
+
+  if [[ -n "${LIDAR_TOPIC_OVERRIDE:-}" ]]; then
+    LIDAR_TOPIC="${LIDAR_TOPIC_OVERRIDE}"
+  else
+    LIDAR_TOPIC="$(read_config_topic "lid_topic")" || {
+      echo "Failed to read common.lid_topic from ${CONFIG_CONTAINER_PATH}" >&2
+      exit 1
+    }
+  fi
+fi
+
+log "ROS_DISTRO=${ROS_DISTRO}"
+log "bag_path=${BAG_PATH_IN_CONTAINER}"
+log "config_file=${CONFIG_CONTAINER_PATH}"
+log "log_csv=${LOG_CSV_CONTAINER_PATH}"
+if [[ "${ALL_TOPICS}" == "true" ]]; then
+  log "playing all bag topics"
+else
+  log "imu_topic=${IMU_TOPIC}"
+  log "lidar_topic=${LIDAR_TOPIC}"
+fi
+
+if [[ "${RATE_MODE}" == "auto" ]]; then
+  set +e
+  run_attempt "1.0"
+  attempt_status=$?
+  set -e
+
+  if [[ "${attempt_status}" -eq 0 ]]; then
+    exit 0
+  fi
+  if [[ "${attempt_status}" -ne 10 ]]; then
+    exit "${attempt_status}"
+  fi
+
+  log "retrying with rate=0.5 after empty odometry log"
+  run_attempt "0.5"
+  exit $?
+fi
+
+run_attempt "${RATE_MODE}"
+EOF
+
 echo "[run] ROS_DISTRO=${ROS_DISTRO}"
 echo "[run] config_file=${CONFIG_CONTAINER_PATH}"
 if [[ "${USE_DATA_MOUNT}" == "true" || -n "${DATA_MOUNT}" ]]; then
@@ -468,30 +735,18 @@ for raw_bag_path in "${BAG_INPUTS[@]}"; do
   echo "[run] bag=${bag_container_path}"
   echo "[run] csv=${csv_host_path}"
 
-  inner_args=(
-    "${INNER_SCRIPT}"
-    --bag-path "${bag_container_path}"
-    --config-file "${CONFIG_CONTAINER_PATH}"
-    --rate "${RATE_MODE}"
-    --queue-size "${QUEUE_SIZE}"
-    --rviz "${RVIZ}"
-    --log-csv "${csv_container}"
-  )
-  if [[ "${ALL_TOPICS}" == "true" ]]; then
-    inner_args+=(--all-topics)
-  fi
-  if [[ -n "${IMU_TOPIC_OVERRIDE}" ]]; then
-    inner_args+=(--imu-topic "${IMU_TOPIC_OVERRIDE}")
-  fi
-  if [[ -n "${LIDAR_TOPIC_OVERRIDE}" ]]; then
-    inner_args+=(--lidar-topic "${LIDAR_TOPIC_OVERRIDE}")
-  fi
-
-  printf -v inner_cmd '%q ' "${inner_args[@]}"
-
   docker_args=(
     compose -f "${COMPOSE_FILE}" run --rm
     -e USE_TMUX=0
+    -e "BAG_PATH_IN_CONTAINER=${bag_container_path}"
+    -e "CONFIG_CONTAINER_PATH=${CONFIG_CONTAINER_PATH}"
+    -e "LOG_CSV_CONTAINER_PATH=${csv_container}"
+    -e "RATE_MODE=${RATE_MODE}"
+    -e "QUEUE_SIZE=${QUEUE_SIZE}"
+    -e "RVIZ=${RVIZ}"
+    -e "ALL_TOPICS=${ALL_TOPICS}"
+    -e "IMU_TOPIC_OVERRIDE=${IMU_TOPIC_OVERRIDE}"
+    -e "LIDAR_TOPIC_OVERRIDE=${LIDAR_TOPIC_OVERRIDE}"
     -v "${LOG_DIR_ABS}:/logs"
   )
 
@@ -508,8 +763,10 @@ for raw_bag_path in "${BAG_INPUTS[@]}"; do
     docker_args+=("${EXTRA_MOUNT_ARGS[@]}")
   fi
 
+  docker_args+=(adaptive_lio bash -lc "${INNER_SCRIPT}")
+
   set +e
-  env ROS_DISTRO="${ROS_DISTRO}" docker "${docker_args[@]}" adaptive_lio bash -lc "${inner_cmd}" &
+  env ROS_DISTRO="${ROS_DISTRO}" docker "${docker_args[@]}" &
   CURRENT_DOCKER_PID=$!
   wait "${CURRENT_DOCKER_PID}"
   bag_status=$?
