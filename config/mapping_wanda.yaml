@@ -17,9 +17,9 @@ common:
 mapping:
   extrinsic_est_en: false
   extrinsic_T: [-0.006253, 0.011775, 0.028535]
-  extrinsic_R: [ -1, 0, 0,
-                  0, -1, 0,
-                  0, 0, 1 ]
+  extrinsic_R: [ -1.0, 0.0, 0.0,
+                  0.0,-1.0, 0.0,
+                  0.0, 0.0, 1.0 ]
 
 map_options:
   map_type: MULTI_RESOLUTION_VOXEL_HASHMAP
